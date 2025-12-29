@@ -1,0 +1,287 @@
+<!doctype html>
+<html lang="de">
+<head>
+  <meta charset="utf-8"/>
+  <meta name="viewport" content="width=device-width,initial-scale=1"/>
+  <title>Coconut Ledger (Online / Free)</title>
+  <style>
+    body{font-family:Arial,Helvetica,sans-serif;margin:18px}
+    .row{display:flex;gap:10px;flex-wrap:wrap;align-items:end}
+    label{display:block;font-size:12px;margin-bottom:4px}
+    input,select,button{padding:10px;font-size:14px;min-width:160px}
+    .xs{min-width:120px}
+    .box{border:1px solid #ddd;padding:12px;border-radius:8px;margin-top:12px}
+    .muted{color:#555;font-size:12px}
+    .danger{color:#b00020;font-weight:700}
+    .ok{color:#0a6;font-weight:700}
+  </style>
+</head>
+<body>
+  <h3>Coconut Ledger (Online / Free)</h3>
+  <div class="muted">
+    Abrechnung: <b>Owner Due = Paid Given * 6</b> (Kaputt wird nicht abgezogen).<br/>
+    Kontrolle: <b>Sold aus Sales</b> → <b>Sold*6</b>. Debt wird automatisch geführt.
+  </div>
+
+  <div class="box" id="authBox">
+    <div class="row">
+      <div>
+        <label>Email</label>
+        <input id="email" type="email" placeholder="you@example.com"/>
+      </div>
+      <div>
+        <label>Password</label>
+        <input id="password" type="password" placeholder="••••••••"/>
+      </div>
+      <button id="loginBtn">Login</button>
+      <button id="logoutBtn" style="display:none">Logout</button>
+    </div>
+    <div id="authMsg" class="muted"></div>
+  </div>
+
+  <div class="box" id="appBox" style="display:none">
+    <div class="row">
+      <div>
+        <label>Joint</label>
+        <select id="joint"></select>
+      </div>
+      <div>
+        <label>Datum</label>
+        <input id="date" type="date" class="xs"/>
+      </div>
+      <div><label>Start Table</label><input id="startTable" type="number" value="0"/></div>
+      <div><label>Given Local</label><input id="givenLocal" type="number" value="0"/></div>
+      <div><label>Given Agric</label><input id="givenAgric" type="number" value="0"/></div>
+      <div><label>Transfer IN</label><input id="transferIn" type="number" value="0"/></div>
+      <div><label>Transfer OUT</label><input id="transferOut" type="number" value="0"/></div>
+      <div><label>Sales (GHS)</label><input id="salesGhs" type="number" value="0"/></div>
+      <div><label>Broken (KPI)</label><input id="broken" type="number" value="0"/></div>
+      <div><label>Paid (GHS)</label><input id="paidGhs" type="number" value="0"/></div>
+      <button id="saveBtn">Save (Enter)</button>
+    </div>
+
+    <div class="row" style="margin-top:10px">
+      <div><label>Sell Price</label><input id="sellPrice" class="xs" type="number" value="7"/></div>
+      <div><label>Owner Due / Coconut</label><input id="duePer" class="xs" type="number" value="6"/></div>
+      <div><label>Bonus %</label><input id="bonusPct" class="xs" type="number" value="10"/></div>
+    </div>
+
+    <div id="result" class="muted" style="margin-top:10px"></div>
+    <div id="debtBox" class="muted" style="margin-top:8px"></div>
+  </div>
+
+  <script type="module">
+    import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+
+    // Supabase Project Settings -> API
+    const SUPABASE_URL = "PASTE_SUPABASE_URL_HERE";
+    const SUPABASE_ANON_KEY = "PASTE_SUPABASE_ANON_KEY_HERE";
+
+    const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+
+    const $ = (id) => document.getElementById(id);
+
+    const authMsg = $("authMsg");
+    const appBox = $("appBox");
+
+    const loginBtn = $("loginBtn");
+    const logoutBtn = $("logoutBtn");
+
+    const jointEl = $("joint");
+    const dateEl = $("date");
+
+    const resultEl = $("result");
+    const debtBox = $("debtBox");
+    const saveBtn = $("saveBtn");
+
+    const fields = {
+      startTable: $("startTable"),
+      givenLocal: $("givenLocal"),
+      givenAgric: $("givenAgric"),
+      transferIn: $("transferIn"),
+      transferOut: $("transferOut"),
+      salesGhs: $("salesGhs"),
+      broken: $("broken"),
+      paidGhs: $("paidGhs"),
+      sellPrice: $("sellPrice"),
+      duePer: $("duePer"),
+      bonusPct: $("bonusPct"),
+    };
+
+    function todayISO(){
+      const d=new Date();
+      const yyyy=d.getFullYear();
+      const mm=String(d.getMonth()+1).padStart(2,"0");
+      const dd=String(d.getDate()).padStart(2,"0");
+      return `${yyyy}-${mm}-${dd}`;
+    }
+
+    function calcBonus(paidGiven, bonusPct){
+      return Math.round(paidGiven * (bonusPct/100));
+    }
+
+    function compute(){
+      const sellPrice = Number(fields.sellPrice.value) || 7;
+      const duePer = Number(fields.duePer.value) || 6;
+      const bonusPct = Number(fields.bonusPct.value) || 10;
+
+      const startTable = Number(fields.startTable.value)||0;
+      const givenLocal = Number(fields.givenLocal.value)||0;
+      const givenAgric = Number(fields.givenAgric.value)||0;
+      const transferIn = Number(fields.transferIn.value)||0;
+      const transferOut = Number(fields.transferOut.value)||0;
+      const salesGhs = Number(fields.salesGhs.value)||0;
+      const broken = Number(fields.broken.value)||0;
+      const paidGhs = Number(fields.paidGhs.value)||0;
+
+      const paidGiven = givenLocal + givenAgric;
+      const bonus = calcBonus(paidGiven, bonusPct);
+
+      const sold = Math.floor(salesGhs / sellPrice);
+
+      const ownerDueGiven = paidGiven * duePer; // main rule
+      const ownerDueSales = sold * duePer;      // control value
+
+      const available = startTable + paidGiven + bonus + transferIn - transferOut;
+      const remaining = available - sold - broken;
+
+      const deltaGiven = paidGhs - ownerDueGiven;
+
+      return { sellPrice, duePer, bonusPct, startTable, givenLocal, givenAgric, transferIn, transferOut, salesGhs, broken, paidGhs,
+               paidGiven, bonus, sold, ownerDueGiven, ownerDueSales, remaining, deltaGiven };
+    }
+
+    async function loadJoints(){
+      const { data, error } = await supabase.from("joints").select("id,name").order("name");
+      if (error) { authMsg.textContent = "Fehler joints: " + error.message; return; }
+      jointEl.innerHTML = data.map(j => `<option value="${j.id}">${j.name}</option>`).join("");
+      await refreshDebt();
+    }
+
+    async function refreshDebt(){
+      const jointId = jointEl.value;
+      if (!jointId) return;
+      const { data, error } = await supabase.from("joint_balances").select("debt_ghs").eq("joint_id", jointId).maybeSingle();
+      if (error) return;
+      const debt = data?.debt_ghs ? Number(data.debt_ghs) : 0;
+      const cls = debt > 0 ? "danger" : "ok";
+      debtBox.innerHTML = `Current Debt (offen): <span class="${cls}"><b>${debt.toFixed(2)} GHS</b></span>`;
+    }
+
+    async function upsertDebt(jointId, debtDelta){
+      const { data: bal } = await supabase.from("joint_balances").select("debt_ghs").eq("joint_id", jointId).maybeSingle();
+      const current = bal?.debt_ghs ? Number(bal.debt_ghs) : 0;
+      const next = current + debtDelta;
+
+      const { error } = await supabase.from("joint_balances").upsert({
+        joint_id: jointId,
+        debt_ghs: next,
+        updated_at: new Date().toISOString()
+      });
+      if (error) throw error;
+      return next;
+    }
+
+    function renderCalc(c, newDebt=null){
+      const payCls = c.deltaGiven < 0 ? "danger" : "ok";
+      resultEl.innerHTML = `
+        <div>Paid Given: <b>${c.paidGiven}</b> | Bonus: <b>${c.bonus}</b> | Sold: <b>${c.sold}</b></div>
+        <div>Owner Due (Given*6): <b>${c.ownerDueGiven.toFixed(2)} GHS</b></div>
+        <div>Kontrolle (Sold*6): <b>${c.ownerDueSales.toFixed(2)} GHS</b></div>
+        <div class="${payCls}">Paid: <b>${c.paidGhs.toFixed(2)} GHS</b> | Paid - Due(Given): <b>${c.deltaGiven.toFixed(2)} GHS</b></div>
+        <div>Soll-Rest (Kontrolle): <b>${c.remaining}</b></div>
+      `;
+      if (newDebt !== null) {
+        const cls = newDebt > 0 ? "danger" : "ok";
+        debtBox.innerHTML = `Current Debt (offen): <span class="${cls}"><b>${newDebt.toFixed(2)} GHS</b></span>`;
+      }
+    }
+
+    async function saveEntry(){
+      const c = compute();
+      renderCalc(c);
+
+      const jointId = jointEl.value;
+      const entryDate = dateEl.value || todayISO();
+
+      const debtDelta = c.ownerDueGiven - c.paidGhs; // positive => debt increases
+      const newDebt = await upsertDebt(jointId, debtDelta);
+
+      const payload = {
+        entry_date: entryDate,
+        joint_id: jointId,
+        start_table: c.startTable,
+        given_local: c.givenLocal,
+        given_agric: c.givenAgric,
+        transfer_in: c.transferIn,
+        transfer_out: c.transferOut,
+        sales_ghs: c.salesGhs,
+        broken: c.broken,
+        paid_ghs: c.paidGhs,
+        paid_given: c.paidGiven,
+        bonus: c.bonus,
+        sold: c.sold,
+        owner_due_given: c.ownerDueGiven,
+        owner_due_sales: c.ownerDueSales,
+        remaining: c.remaining
+      };
+
+      const { error } = await supabase.from("entries").insert(payload);
+      if (error) {
+        authMsg.textContent = "Save Fehler: " + error.message;
+        return;
+      }
+
+      authMsg.textContent = "Gespeichert.";
+      renderCalc(c, newDebt);
+
+      fields.salesGhs.value = 0;
+      fields.paidGhs.value = 0;
+      fields.paidGhs.focus();
+    }
+
+    loginBtn.onclick = async () => {
+      authMsg.textContent = "Login…";
+      const email = $("email").value;
+      const password = $("password").value;
+      const { error } = await supabase.auth.signInWithPassword({ email, password });
+      if (error) authMsg.textContent = "Login Fehler: " + error.message;
+    };
+
+    logoutBtn.onclick = async () => { await supabase.auth.signOut(); };
+
+    supabase.auth.onAuthStateChange(async (_event, session) => {
+      if (session) {
+        loginBtn.style.display = "none";
+        logoutBtn.style.display = "inline-block";
+        appBox.style.display = "block";
+        dateEl.value = todayISO();
+        await loadJoints();
+        authMsg.textContent = "Eingeloggt.";
+      } else {
+        loginBtn.style.display = "inline-block";
+        logoutBtn.style.display = "none";
+        appBox.style.display = "none";
+        authMsg.textContent = "Bitte einloggen.";
+      }
+    });
+
+    jointEl.addEventListener("change", refreshDebt);
+    document.addEventListener("keydown", (e) => {
+      if (e.key === "Enter" && appBox.style.display !== "none") saveEntry();
+    });
+    saveBtn.onclick = saveEntry;
+
+    const { data: { session } } = await supabase.auth.getSession();
+    if (session) {
+      appBox.style.display = "block";
+      loginBtn.style.display = "none";
+      logoutBtn.style.display = "inline-block";
+      dateEl.value = todayISO();
+      await loadJoints();
+    } else {
+      authMsg.textContent = "Bitte einloggen.";
+    }
+  </script>
+</body>
+</html>
