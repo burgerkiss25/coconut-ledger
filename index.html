@@ -1,1 +1,117 @@
+<!doctype html>
+<html lang="de">
+<head>
+  <meta charset="utf-8"/>
+  <meta name="viewport" content="width=device-width,initial-scale=1"/>
+  <title>Coconut Ledger (Online / Free)</title>
+  <link rel="stylesheet" href="./css/style.css"/>
+</head>
+<body>
+  <h3>Coconut Ledger (Online / Free)</h3>
+
+  <div class="muted">
+    Abrechnung: <b>Owner Due = Paid Given * 6</b> (Broken ist Option 1 = nur KPI, wird NICHT vom Stock abgezogen).<br/>
+    Kontrolle: <b>Sold aus Sales</b> → <b>Sold*6</b>. Debt wird automatisch geführt.
+  </div>
+
+  <div class="box" id="authBox">
+    <div class="row">
+      <div>
+        <label>Email</label>
+        <input id="email" type="email" placeholder="you@example.com"/>
+      </div>
+      <div>
+        <label>Password</label>
+        <input id="password" type="password" placeholder="••••••••"/>
+      </div>
+      <button class="btn" id="loginBtn">Login</button>
+      <button class="btn" id="logoutBtn" style="display:none">Logout</button>
+      <span id="rolePill" class="pill" style="display:none"></span>
+    </div>
+    <div id="authMsg" class="muted"></div>
+  </div>
+
+  <div class="box" id="appBox" style="display:none">
+    <div class="row">
+      <div>
+        <label>Joint</label>
+        <select id="joint"></select>
+      </div>
+      <div>
+        <label>Datum</label>
+        <input id="date" type="date" class="xs"/>
+      </div>
+
+      <div>
+        <label>Start Table</label>
+        <input id="startTable" type="number" value="0"/>
+      </div>
+
+      <div>
+        <button class="btn" id="toggleDeliveryBtn">+ Add New Coconuts</button>
+      </div>
+    </div>
+
+    <div id="deliveryBox" class="box" style="display:none;margin-top:10px">
+      <div class="muted"><b>Delivery / Wareneingang</b> (nur wenn wirklich neue Kokosnüsse reinkommen)</div>
+      <div class="row" style="margin-top:8px">
+        <div>
+          <label>Type</label>
+          <select id="deliveryType" class="xs">
+            <option value="local">Local</option>
+            <option value="agric">Agric</option>
+          </select>
+        </div>
+        <div>
+          <label>Quantity</label>
+          <input id="deliveryQty" type="number" value="0" class="xs"/>
+        </div>
+        <button class="btn" id="addDeliveryBtn">Add</button>
+        <button class="btn" id="clearDeliveryBtn">Clear Delivery</button>
+      </div>
+      <div class="row" style="margin-top:8px">
+        <div><label>Given Local (auto)</label><input id="givenLocal" type="number" value="0" readonly/></div>
+        <div><label>Given Agric (auto)</label><input id="givenAgric" type="number" value="0" readonly/></div>
+      </div>
+    </div>
+
+    <div class="hr"></div>
+
+    <div class="row">
+      <div><label>Transfer IN</label><input id="transferIn" type="number" value="0"/></div>
+      <div><label>Transfer OUT</label><input id="transferOut" type="number" value="0"/></div>
+      <div><label>Sales (GHS)</label><input id="salesGhs" type="number" value="0"/></div>
+      <div><label>Broken (KPI only)</label><input id="broken" type="number" value="0"/></div>
+
+      <div><label>Paid Cash (GHS)</label><input id="paidCash" type="number" value="0"/></div>
+      <div><label>Paid MoMo (GHS)</label><input id="paidMoMo" type="number" value="0"/></div>
+      <div><label>Paid Total (auto)</label><input id="paidTotal" type="number" value="0" readonly/></div>
+
+      <div><label>MoMo Ref (optional)</label><input id="momoRef" type="text" class="wide" placeholder="Transaction ID / Sender"/></div>
+      <button class="btn" id="saveBtn">Save (Enter)</button>
+    </div>
+
+    <div class="row" style="margin-top:10px">
+      <div><label>Sell Price</label><input id="sellPrice" class="xs" type="number" value="7"/></div>
+      <div><label>Owner Due / Coconut</label><input id="duePer" class="xs" type="number" value="6"/></div>
+      <div><label>Bonus %</label><input id="bonusPct" class="xs" type="number" value="10"/></div>
+    </div>
+
+    <div id="result" class="muted" style="margin-top:10px"></div>
+    <div id="debtBox" class="muted" style="margin-top:8px"></div>
+
+    <div class="box" style="margin-top:12px">
+      <div class="muted"><b>Events</b> (Foreman kann anfragen, Admin approved)</div>
+      <div class="row" style="margin-top:8px">
+        <button class="btn" id="addEventBtn">Add Event Request</button>
+        <button class="btn" id="loadEventsBtn">Reload Events</button>
+      </div>
+      <div id="eventsList" class="muted" style="margin-top:10px"></div>
+      <div id="adminApprovals" class="muted" style="margin-top:10px"></div>
+    </div>
+  </div>
+
+  <script type="module" src="./js/app.js"></script>
+</body>
+</html>
 
