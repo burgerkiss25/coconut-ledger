@@ -1,4 +1,4 @@
-import { supabase, DEFAULTS } from "./config.js";
+import { loadSupabaseClient, DEFAULTS } from "./config.js";
 
 const $ = (id) => document.getElementById(id);
 
@@ -25,6 +25,7 @@ const addDeliveryBtn = $("addDeliveryBtn");
 const clearDeliveryBtn = $("clearDeliveryBtn");
 
 let CURRENT_ROLE = "foreman";
+let supabase = null;
 
 const fields = {
   startTable: $("startTable"),
@@ -395,18 +396,20 @@ async function createEventRequest() {
 }
 
 // Auth handlers
-loginBtn.onclick = async () => {
+async function login() {
   authMsg.textContent = "Login…";
   const email = $("email").value;
   const password = $("password").value;
 
   const { error } = await supabase.auth.signInWithPassword({ email, password });
   if (error) authMsg.textContent = "Login Fehler: " + error.message;
-};
+}
 
-logoutBtn.onclick = async () => { await supabase.auth.signOut(); };
+async function logout() {
+  await supabase.auth.signOut();
+}
 
-supabase.auth.onAuthStateChange(async (_event, session) => {
+async function handleSession(session) {
   if (session) {
     loginBtn.style.display = "none";
     logoutBtn.style.display = "inline-block";
@@ -439,11 +442,7 @@ supabase.auth.onAuthStateChange(async (_event, session) => {
     CURRENT_ROLE = "foreman";
     authMsg.textContent = "Bitte einloggen.";
   }
-});
-
-jointEl.addEventListener("change", refreshDebt);
-fields.paidCash.addEventListener("input", syncPaidTotal);
-fields.paidMoMo.addEventListener("input", syncPaidTotal);
+}
 
 document.addEventListener("keydown", (e) => {
   if (e.key === "Enter" && appBox.style.display !== "none") saveEntry();
@@ -455,19 +454,26 @@ fields.sellPrice.value = DEFAULTS.sellPrice;
 fields.duePer.value = DEFAULTS.duePer;
 fields.bonusPct.value = DEFAULTS.bonusPct;
 
-const { data: { session } } = await supabase.auth.getSession();
-if (session) {
-  appBox.style.display = "block";
-  loginBtn.style.display = "none";
-  logoutBtn.style.display = "inline-block";
-  dateEl.value = todayISO();
-  await loadRole(session);
-  await loadJoints();
-  await loadApprovedEvents();
-  await loadPendingApprovals();
-  syncPaidTotal();
-  authMsg.textContent = "Eingeloggt.";
-} else {
-  authMsg.textContent = "Bitte einloggen.";
-}
+try {
+  supabase = loadSupabaseClient();
 
+  jointEl.addEventListener("change", refreshDebt);
+  fields.paidCash.addEventListener("input", syncPaidTotal);
+  fields.paidMoMo.addEventListener("input", syncPaidTotal);
+
+  loginBtn.onclick = login;
+  logoutBtn.onclick = logout;
+
+  supabase.auth.onAuthStateChange(async (_event, session) => {
+    await handleSession(session);
+  });
+
+  const { data: { session } } = await supabase.auth.getSession();
+  await handleSession(session);
+} catch (error) {
+  console.error("[boot] Failed to start app", error);
+  loginBtn.style.display = "none";
+  logoutBtn.style.display = "none";
+  appBox.style.display = "none";
+  authMsg.textContent = `Konfigurationsfehler: ${error.message}`;
+}
