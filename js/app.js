@@ -43,6 +43,25 @@ const fields = {
   bonusPct: $("bonusPct"),
 };
 
+let isSaving = false;
+
+function setAuthMessage(message, type = "info") {
+  authMsg.textContent = message;
+  authMsg.className = type === "error" ? "muted error" : type === "success" ? "muted success" : "muted";
+}
+
+function formatSupabaseError(error) {
+  const parts = [error?.message, error?.details, error?.hint].filter(Boolean);
+  return parts.length ? parts.join(" | ") : "Unbekannter Fehler";
+}
+
+function setSaveState(saving, statusText = "") {
+  isSaving = saving;
+  saveBtn.disabled = saving;
+  saveBtn.textContent = saving ? "Speichere…" : "Save (Enter)";
+  if (statusText) setAuthMessage(statusText);
+}
+
 function todayISO() {
   const d = new Date();
   const yyyy = d.getFullYear();
@@ -61,20 +80,54 @@ function syncPaidTotal() {
   fields.paidTotal.value = (paidCash + paidMoMo).toFixed(2);
 }
 
-function compute() {
-  const sellPrice = Number(fields.sellPrice.value) || DEFAULTS.sellPrice;
-  const duePer = Number(fields.duePer.value) || DEFAULTS.duePer;
-  const bonusPct = Number(fields.bonusPct.value) || DEFAULTS.bonusPct;
+function validateEntry() {
+  const errors = [];
 
-  const startTable = Number(fields.startTable.value) || 0;
-  const givenLocal = Number(fields.givenLocal.value) || 0;
-  const givenAgric = Number(fields.givenAgric.value) || 0;
-  const transferIn = Number(fields.transferIn.value) || 0;
-  const transferOut = Number(fields.transferOut.value) || 0;
-  const salesGhs = Number(fields.salesGhs.value) || 0;
-  const broken = Number(fields.broken.value) || 0; // KPI only
-  const paidCash = Number(fields.paidCash.value) || 0;
-  const paidMoMo = Number(fields.paidMoMo.value) || 0;
+  if (!jointEl.value) errors.push("Bitte Joint auswählen.");
+  if (!dateEl.value) errors.push("Bitte Datum setzen.");
+  if (fields.salesGhs.value === "" || fields.salesGhs.value === null) errors.push("Sales (GHS) ist erforderlich.");
+
+  const numericFields = [
+    { el: fields.startTable, label: "Start Table" },
+    { el: fields.givenLocal, label: "Given Local" },
+    { el: fields.givenAgric, label: "Given Agric" },
+    { el: fields.transferIn, label: "Transfer IN" },
+    { el: fields.transferOut, label: "Transfer OUT" },
+    { el: fields.salesGhs, label: "Sales (GHS)", required: true },
+    { el: fields.broken, label: "Broken (KPI only)" },
+    { el: fields.paidCash, label: "Paid Cash (GHS)" },
+    { el: fields.paidMoMo, label: "Paid MoMo (GHS)" },
+    { el: fields.paidTotal, label: "Paid Total (GHS)" },
+    { el: fields.sellPrice, label: "Sell Price" },
+    { el: fields.duePer, label: "Owner Due / Coconut" },
+    { el: fields.bonusPct, label: "Bonus %" },
+  ];
+
+  numericFields.forEach(({ el, label, required }) => {
+    const raw = el.value;
+    if (!required && (raw === "" || raw === null)) return;
+    const num = Number(raw || 0);
+    if (!Number.isFinite(num)) errors.push(`${label} muss eine Zahl sein.`);
+    else if (num < 0) errors.push(`${label} darf nicht negativ sein.`);
+  });
+
+  return { ok: errors.length === 0, errors };
+}
+
+function compute() {
+  const sellPrice = Math.max(0, Number(fields.sellPrice.value) || DEFAULTS.sellPrice);
+  const duePer = Math.max(0, Number(fields.duePer.value) || DEFAULTS.duePer);
+  const bonusPct = Math.max(0, Number(fields.bonusPct.value) || DEFAULTS.bonusPct);
+
+  const startTable = Math.max(0, Number(fields.startTable.value) || 0);
+  const givenLocal = Math.max(0, Number(fields.givenLocal.value) || 0);
+  const givenAgric = Math.max(0, Number(fields.givenAgric.value) || 0);
+  const transferIn = Math.max(0, Number(fields.transferIn.value) || 0);
+  const transferOut = Math.max(0, Number(fields.transferOut.value) || 0);
+  const salesGhs = Math.max(0, Number(fields.salesGhs.value) || 0);
+  const broken = Math.max(0, Number(fields.broken.value) || 0); // KPI only
+  const paidCash = Math.max(0, Number(fields.paidCash.value) || 0);
+  const paidMoMo = Math.max(0, Number(fields.paidMoMo.value) || 0);
   const paidGhs = paidCash + paidMoMo;
   const momoRef = (fields.momoRef.value || "").trim();
 
@@ -148,7 +201,7 @@ async function loadRole(session) {
 async function loadJoints() {
   const { data, error } = await supabase.from("joints").select("id,name").order("name");
   if (error) {
-    authMsg.textContent = "Fehler joints: " + error.message;
+    setAuthMessage("Fehler joints: " + formatSupabaseError(error), "error");
     return;
   }
   jointEl.innerHTML = (data || []).map(j => `<option value="${j.id}">${j.name}</option>`).join("");
@@ -193,21 +246,33 @@ async function upsertDebt(jointId, debtDelta) {
 }
 
 async function saveEntry() {
+  if (isSaving) return;
+
   syncPaidTotal();
+  const validation = validateEntry();
+  if (!validation.ok) {
+    setAuthMessage(validation.errors.join("\n"), "error");
+    return;
+  }
+
+  fields.momoRef.value = (fields.momoRef.value || "").trim();
   const c = compute();
   renderCalc(c);
 
   const jointId = jointEl.value;
-  const entryDate = dateEl.value || todayISO();
+  const entryDate = dateEl.value;
 
   // Debt increases if due > paid (positive delta)
   const debtDelta = c.ownerDueGiven - c.paidGhs;
   let newDebt = null;
 
+  setSaveState(true, "Speichere…");
+
   try {
     newDebt = await upsertDebt(jointId, debtDelta);
   } catch (e) {
-    authMsg.textContent = "Debt Update Fehler: " + (e?.message || String(e));
+    setSaveState(false);
+    setAuthMessage("Debt Update Fehler: " + formatSupabaseError(e), "error");
     return;
   }
 
@@ -238,11 +303,13 @@ async function saveEntry() {
 
   const { error } = await supabase.from("entries").insert(payload);
   if (error) {
-    authMsg.textContent = "Save Fehler: " + error.message;
+    setSaveState(false);
+    setAuthMessage("Save Fehler: " + formatSupabaseError(error), "error");
     return;
   }
 
-  authMsg.textContent = "Gespeichert.";
+  setSaveState(false);
+  setAuthMessage("Gespeichert.", "success");
   renderCalc(c, newDebt);
 
   // Reset daily input fields (not stock base)
@@ -396,12 +463,12 @@ async function createEventRequest() {
 
 // Auth handlers
 loginBtn.onclick = async () => {
-  authMsg.textContent = "Login…";
+  setAuthMessage("Login…");
   const email = $("email").value;
   const password = $("password").value;
 
   const { error } = await supabase.auth.signInWithPassword({ email, password });
-  if (error) authMsg.textContent = "Login Fehler: " + error.message;
+  if (error) setAuthMessage("Login Fehler: " + formatSupabaseError(error), "error");
 };
 
 logoutBtn.onclick = async () => { await supabase.auth.signOut(); };
@@ -430,14 +497,14 @@ supabase.auth.onAuthStateChange(async (_event, session) => {
 
     // Events + totals
     syncPaidTotal();
-    authMsg.textContent = "Eingeloggt.";
+    setAuthMessage("Eingeloggt.");
   } else {
     loginBtn.style.display = "inline-block";
     logoutBtn.style.display = "none";
     appBox.style.display = "none";
     rolePill.style.display = "none";
     CURRENT_ROLE = "foreman";
-    authMsg.textContent = "Bitte einloggen.";
+    setAuthMessage("Bitte einloggen.");
   }
 });
 
@@ -466,8 +533,7 @@ if (session) {
   await loadApprovedEvents();
   await loadPendingApprovals();
   syncPaidTotal();
-  authMsg.textContent = "Eingeloggt.";
+  setAuthMessage("Eingeloggt.");
 } else {
-  authMsg.textContent = "Bitte einloggen.";
+  setAuthMessage("Bitte einloggen.");
 }
-

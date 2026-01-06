@@ -6,9 +6,11 @@ input,select,button{padding:10px;font-size:14px;min-width:160px}
 .wide{min-width:240px}
 .box{border:1px solid #ddd;padding:12px;border-radius:8px;margin-top:12px}
 .muted{color:#555;font-size:12px;white-space:pre-line}
+.error{color:#b00020;font-weight:700}
+.success{color:#0a6;font-weight:700}
 .danger{color:#b00020;font-weight:700}
 .ok{color:#0a6;font-weight:700}
 .btn{cursor:pointer}
+.btn[disabled]{opacity:.6;cursor:not-allowed}
 .pill{display:inline-block;padding:3px 8px;border:1px solid #ccc;border-radius:999px;font-size:12px}
 .hr{height:1px;background:#eee;margin:10px 0}
-
